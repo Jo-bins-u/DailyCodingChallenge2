@@ -72,6 +72,28 @@ app.post("/login/faculty", async (req, res) => {
     res.status(500).json({ error: "Login failed" });
   }
 });
+app.get("/test-sheets", async (req, res) => {
+  try {
+    const client = await auth.getClient();
+    const sheets = google.sheets({ version: "v4", auth: client });
+
+    const result = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "Students!A1:D5"
+    });
+
+    res.json({
+      success: true,
+      rows: result.data.values || []
+    });
+  } catch (err) {
+    console.error("Google Sheets access failed:", err);
+    res.status(500).json({
+      success: false,
+      error: err.message
+    });
+  }
+});
 
 // ========== STUDENT ROUTES ==========
 
@@ -220,4 +242,4 @@ app.get("/challenges/:department", async (req, res) => {
 
 // ========== SERVER START ==========
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
+app.listen(PORT, () => console.log(...));
