@@ -7,12 +7,14 @@ const app = express();
 app.use(bodyParser.json());
 app.use(express.static(path.join(__dirname, "public"))); // Serve HTML files
 
-// 🔹 Google Sheets Setup
+// 🔹 Google Sheets Auth (Render version only)
+const credentials = JSON.parse(process.env.GOOGLE_CREDENTIALS); // from Render Env Vars
 const auth = new google.auth.GoogleAuth({
-  credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
+  credentials,
   scopes: ["https://www.googleapis.com/auth/spreadsheets"]
 });
 
+// 🔹 Your Google Sheets ID
 const spreadsheetId = "1KjopCS01TISleUm4ICrcYKtJw8Vl1FhDB2OJvAlMGz4"; // replace with your sheet ID
 
 // ========== LOGIN ROUTES ==========
@@ -91,10 +93,10 @@ app.get("/students", async (req, res) => {
   }
 });
 
-// Get students by class (case-insensitive + trim)
+// Get students by class (dynamic)
 app.get("/students/class/:className", async (req, res) => {
   try {
-    const className = req.params.className.trim().toLowerCase();
+    const className = req.params.className;
 
     const client = await auth.getClient();
     const sheets = google.sheets({ version: "v4", auth: client });
@@ -105,30 +107,21 @@ app.get("/students/class/:className", async (req, res) => {
     });
 
     const rows = result.data.values || [];
-    if (rows.length <= 1) {
-      return res.json([]);
-    }
+    if (rows.length <= 1) return res.json([]);
 
     const headers = rows[0];
-    const classIndex = headers.findIndex(h => h.toLowerCase().trim() === "class");
+    const classIndex = headers.indexOf("Class");
+    if (classIndex === -1) return res.json([]);
 
-    if (classIndex === -1) {
-      return res.json([]);
-    }
-
-    const filtered = [
-      headers,
-      ...rows.slice(1).filter(row => (row[classIndex] || "").trim().toLowerCase() === className)
-    ];
-
+    const filtered = [headers, ...rows.slice(1).filter(row => row[classIndex] === className)];
     res.json(filtered);
   } catch (err) {
-    console.error("❌ Error fetching students by class:", err);
+    console.error(err);
     res.status(500).json({ error: "Failed to fetch students by class" });
   }
 });
 
-// Get unique classes (dynamic with logs)
+// Get unique classes
 app.get("/classes", async (req, res) => {
   try {
     const client = await auth.getClient();
@@ -140,60 +133,29 @@ app.get("/classes", async (req, res) => {
     });
 
     const rows = result.data.values || [];
-    if (rows.length <= 1) {
-      console.log("⚠️ No student data found in sheet.");
-      return res.json([]);
-    }
+    if (rows.length <= 1) return res.json([]);
 
     const headers = rows[0];
-    console.log("✅ Headers found in Students sheet:", headers);
-
     const classIndex = headers.indexOf("Class");
-
-    if (classIndex === -1) {
-      console.log("❌ 'Class' column not found in headers.");
-      return res.json([]);
-    }
+    if (classIndex === -1) return res.json([]);
 
     const classes = [...new Set(rows.slice(1).map(row => row[classIndex]))].filter(Boolean);
-    console.log("✅ Classes found:", classes);
-
     res.json(classes);
   } catch (err) {
-    console.error("❌ Error fetching classes:", err);
+    console.error(err);
     res.status(500).json({ error: "Failed to fetch classes" });
   }
 });
 
-// ========== CHALLENGE ROUTES (UPDATED) ==========
+// ========== CHALLENGE ROUTES ==========
 
-// Add a coding challenge (validate department against Students sheet)
+// Add a coding challenge
 app.post("/addChallenge", async (req, res) => {
   try {
     const { title, department, link, date } = req.body;
 
     const client = await auth.getClient();
     const sheets = google.sheets({ version: "v4", auth: client });
-
-    // ✅ Fetch valid departments from Students sheet
-    const studentData = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: "Students!A:H"
-    });
-
-    const studentRows = studentData.data.values || [];
-    const studentHeaders = studentRows[0] || [];
-    const deptIndex = studentHeaders.findIndex(h => h.toLowerCase().trim() === "department");
-
-    if (deptIndex === -1) {
-      return res.status(400).json({ error: "Department column not found in Students sheet" });
-    }
-
-    const validDepartments = [...new Set(studentRows.slice(1).map(r => (r[deptIndex] || "").trim().toLowerCase()))].filter(Boolean);
-
-    if (!validDepartments.includes(department.trim().toLowerCase())) {
-      return res.status(400).json({ error: `Invalid department: ${department}. Please use a department from Students sheet.` });
-    }
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
@@ -206,66 +168,12 @@ app.post("/addChallenge", async (req, res) => {
 
     res.json({ success: true, message: "Challenge added successfully!" });
   } catch (err) {
-    console.error("❌ Error adding challenge:", err);
+    console.error(err);
     res.status(500).json({ error: "Failed to add challenge" });
   }
 });
 
-// Get challenges by department (validated against Students sheet)
-app.get("/challenges/:department", async (req, res) => {
-  try {
-    const requestedDept = req.params.department.trim().toLowerCase();
-
-    const client = await auth.getClient();
-    const sheets = google.sheets({ version: "v4", auth: client });
-
-    // ✅ Fetch valid departments from Students sheet
-    const studentData = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: "Students!A:H"
-    });
-
-    const studentRows = studentData.data.values || [];
-    const studentHeaders = studentRows[0] || [];
-    const deptIndex = studentHeaders.findIndex(h => h.toLowerCase().trim() === "department");
-
-    if (deptIndex === -1) {
-      return res.json([]);
-    }
-
-    const validDepartments = [...new Set(studentRows.slice(1).map(r => (r[deptIndex] || "").trim().toLowerCase()))].filter(Boolean);
-
-    if (!validDepartments.includes(requestedDept)) {
-      return res.json([]); // ❌ department doesn’t exist in Students sheet
-    }
-
-    // ✅ Fetch challenges
-    const challengeData = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: "Challenges!A:D"
-    });
-
-    const challengeRows = challengeData.data.values || [];
-    const challengeHeaders = challengeRows[0] || [];
-    const challengeDeptIndex = challengeHeaders.findIndex(h => h.toLowerCase().trim() === "department");
-
-    if (challengeDeptIndex === -1) {
-      return res.json([]);
-    }
-
-    const filtered = [
-      challengeHeaders,
-      ...challengeRows.slice(1).filter(row => (row[challengeDeptIndex] || "").trim().toLowerCase() === requestedDept)
-    ];
-
-    res.json(filtered);
-  } catch (err) {
-    console.error("❌ Error fetching challenges:", err);
-    res.status(500).json({ error: "Failed to fetch challenges by department" });
-  }
-});
-
-// Get all challenges (unchanged)
+// Get all challenges
 app.get("/challenges", async (req, res) => {
   try {
     const client = await auth.getClient();
@@ -280,6 +188,33 @@ app.get("/challenges", async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch challenges" });
+  }
+});
+
+// Get challenges by department
+app.get("/challenges/:department", async (req, res) => {
+  try {
+    const dept = req.params.department;
+
+    const client = await auth.getClient();
+    const sheets = google.sheets({ version: "v4", auth: client });
+
+    const result = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: "Challenges!A:D"
+    });
+
+    const rows = result.data.values || [];
+    const headers = rows[0] || [];
+    const deptIndex = headers.indexOf("Department");
+
+    if (deptIndex === -1) return res.json([]);
+
+    const filtered = [headers, ...rows.slice(1).filter(row => row[deptIndex] === dept)];
+    res.json(filtered);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch challenges by department" });
   }
 });
 
