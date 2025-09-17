@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Student Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #1e2a38;
+      color: #f5f5f5;
+      margin: 0;
+    }
+    header {
+      background: #2d3e50;
+      padding: 15px;
+      text-align: center;
+      font-size: 22px;
+      font-weight: bold;
+    }
+    nav {
+      display: flex;
+      justify-content: center;
+      background: #3b516c;
+      padding: 10px;
+    }
+    nav button {
+      background: none;
+      border: none;
+      color: #f5f5f5;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    nav button.active {
+      background: #4CAF50;
+      border-radius: 6px;
+    }
+    .container {
+      padding: 20px;
+    }
+    .card {
+      background: #2d3e50;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    table, th, td {
+      border: 1px solid #444;
+    }
+    th, td {
+      padding: 10px;
+      text-align: left;
+    }
+    a {
+      color: #4CAF50;
+      font-weight: bold;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <header>🎓 Student Dashboard</header>
+
+  <nav>
+    <button id="tab-home" class="active">🏠 Home</button>
+    <button id="tab-scores">📊 Scores</button>
+    <button id="tab-challenges">📝 Challenges</button>
+    <button id="logout">🚪 Logout</button>
+  </nav>
+
+  <div class="container">
+    <!-- Landing Page -->
+    <div id="home" class="card">
+      <h2>Welcome, <span id="student-name"></span>!</h2>
+      <p>Here is today’s coding challenge link:</p>
+      <div id="today-challenge">Loading...</div>
+    </div>
+
+    <!-- Scores Page -->
+    <div id="scores" class="card" style="display:none;">
+      <h2>My Scores</h2>
+      <div id="scores-info">Loading...</div>
+    </div>
+
+    <!-- Challenges Page -->
+    <div id="challenges" class="card" style="display:none;">
+      <h2>All Coding Challenges</h2>
+      <div id="challenges-list">Loading...</div>
+    </div>
+  </div>
+
+  <script>
+    // Access control
+    const role = localStorage.getItem("userRole");
+    const regNo = localStorage.getItem("userIdentifier");
+    if (!role || role !== "student") {
+      window.location.href = "index.html";
+    }
+
+    // Navigation
+    const tabs = {
+      "tab-home": "home",
+      "tab-scores": "scores",
+      "tab-challenges": "challenges"
+    };
+
+    Object.keys(tabs).forEach(tabId => {
+      document.getElementById(tabId).addEventListener("click", () => {
+        Object.values(tabs).forEach(sec => document.getElementById(sec).style.display = "none");
+        Object.keys(tabs).forEach(t => document.getElementById(t).classList.remove("active"));
+        document.getElementById(tabs[tabId]).style.display = "block";
+        document.getElementById(tabId).classList.add("active");
+      });
+    });
+
+    // Logout
+    document.getElementById("logout").addEventListener("click", () => {
+      localStorage.clear();
+      window.location.href = "index.html";
+    });
+
+    // Load student details
+    async function loadStudent() {
+      const res = await fetch("/students");
+      const students = await res.json();
+
+      if (!students.length) {
+        document.getElementById("scores-info").innerText = "No student data found.";
+        return;
+      }
+
+      // normalize headers
+      const rawHeaders = students[0];
+      const headers = rawHeaders.map(h => h.toLowerCase().trim());
+
+      const regIndex = headers.indexOf("reg no");
+      const nameIndex = headers.indexOf("name");
+      const emailIndex = headers.indexOf("email");
+      const classIndex = headers.indexOf("class");
+      const deptIndex = headers.indexOf("department");
+      const totalDaysIndex = headers.indexOf("total days");
+      const missedIndex = headers.indexOf("days missed");
+      const attemptsIndex = headers.indexOf("total attempts");
+
+      const student = students.find((row, i) => i !== 0 && row[regIndex] === regNo);
+      if (!student) {
+        document.getElementById("scores-info").innerText = "Student not found.";
+        return;
+      }
+
+      document.getElementById("student-name").innerText = student[nameIndex];
+
+      const totalDays = parseInt(student[totalDaysIndex] || 0);
+      const missed = parseInt(student[missedIndex] || 0);
+      const attempts = parseInt(student[attemptsIndex] || 0);
+      const attendance = totalDays > 0 ? Math.round(((totalDays - missed) / totalDays) * 100) : 0;
+
+      document.getElementById("scores-info").innerHTML = `
+        <p><b>Name:</b> ${student[nameIndex]}</p>
+        <p><b>Email:</b> ${student[emailIndex]}</p>
+        <p><b>Class:</b> ${student[classIndex]}</p>
+        <p><b>Department:</b> ${student[deptIndex]}</p>
+        <p><b>Reg No:</b> ${student[regIndex]}</p>
+        <p><b>Total Days:</b> ${totalDays}</p>
+        <p><b>Days Missed:</b> ${missed}</p>
+        <p><b>Total Attempts:</b> ${attempts}</p>
+        <p><b>Attendance %:</b> ${attendance}%</p>
+      `;
+
+      // Load challenges
+      loadChallenges(student[deptIndex]);
+    }
+
+    // Load today's challenge (latest for department)
+    async function loadTodayChallenge(department) {
+      const res = await fetch(`/challenges/${department}`);
+      const challenges = await res.json();
+
+      if (!challenges.length) {
+        document.getElementById("today-challenge").innerText = "No challenges available.";
+        return;
+      }
+
+      const headers = challenges[0].map(h => h.toLowerCase().trim());
+      const titleIndex = headers.indexOf("title");
+      const linkIndex = headers.indexOf("link");
+      const dateIndex = headers.indexOf("date");
+
+      if (titleIndex === -1 || linkIndex === -1 || dateIndex === -1) {
+        document.getElementById("today-challenge").innerText =
+          "⚠️ Challenge sheet is missing Title, Link, or Date column.";
+        return;
+      }
+
+      const last = challenges[challenges.length - 1];
+      document.getElementById("today-challenge").innerHTML = `
+        <p><b>${last[titleIndex]}</b> (${last[dateIndex]})</p>
+        <p><a href="${last[linkIndex]}" target="_blank">Open Challenge</a></p>
+      `;
+    }
+
+    // Load all challenges
+    async function loadChallenges(department) {
+      const res = await fetch(`/challenges/${department}`);
+      const challenges = await res.json();
+
+      if (!challenges.length) {
+        document.getElementById("challenges-list").innerText = "No challenges found.";
+        document.getElementById("today-challenge").innerText = "No challenges available.";
+        return;
+      }
+
+      const headers = challenges[0].map(h => h.toLowerCase().trim());
+      const titleIndex = headers.indexOf("title");
+      const linkIndex = headers.indexOf("link");
+      const dateIndex = headers.indexOf("date");
+
+      if (titleIndex === -1 || linkIndex === -1 || dateIndex === -1) {
+        document.getElementById("challenges-list").innerText =
+          "⚠️ Challenge sheet is missing Title, Link, or Date column.";
+        return;
+      }
+
+      let html = "<table><tr><th>Title</th><th>Date</th><th>Link</th></tr>";
+      challenges.slice(1).forEach(c => {
+        html += `<tr>
+          <td>${c[titleIndex]}</td>
+          <td>${c[dateIndex]}</td>
+          <td><a href="${c[linkIndex]}" target="_blank">Open</a></td>
+        </tr>`;
+      });
+      html += "</table>";
+
+      document.getElementById("challenges-list").innerHTML = html;
+
+      // Also load today's challenge
+      loadTodayChallenge(department);
+    }
+
+    loadStudent();
+  </script>
+</body>
+</html>

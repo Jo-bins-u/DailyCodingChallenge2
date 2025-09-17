@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Faculty Dashboard</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #1e2a38;
+      color: #f5f5f5;
+      margin: 0;
+    }
+    header {
+      background: #2d3e50;
+      padding: 15px;
+      text-align: center;
+      font-size: 22px;
+      font-weight: bold;
+    }
+    nav {
+      display: flex;
+      justify-content: center;
+      background: #3b516c;
+      padding: 10px;
+    }
+    nav button {
+      background: none;
+      border: none;
+      color: #f5f5f5;
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    nav button.active {
+      background: #4CAF50;
+      border-radius: 6px;
+    }
+    .container {
+      padding: 20px;
+    }
+    .card {
+      background: #2d3e50;
+      padding: 20px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    }
+    select {
+      padding: 6px;
+      border-radius: 6px;
+      margin-bottom: 15px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    table, th, td {
+      border: 1px solid #444;
+    }
+    th, td {
+      padding: 10px;
+      text-align: left;
+    }
+    a {
+      color: #4CAF50;
+      text-decoration: none;
+      font-weight: bold;
+    }
+  </style>
+</head>
+<body>
+  <header>👨‍🏫 Faculty Dashboard</header>
+
+  <nav>
+    <button id="tab-home" class="active">🏠 Home</button>
+    <button id="tab-students">📚 Students</button>
+    <button id="tab-challenges">📝 Challenges</button>
+    <button id="logout">🚪 Logout</button>
+  </nav>
+
+  <div class="container">
+    <!-- Landing Page -->
+    <div id="home" class="card">
+      <h2>Welcome, <span id="faculty-name"></span>!</h2>
+      <p>Select a tab above to manage students or coding challenges.</p>
+    </div>
+
+    <!-- Students Page -->
+    <div id="students" class="card" style="display:none;">
+      <h2>Students by Class</h2>
+      <label for="classSelect">Choose a Class:</label>
+      <select id="classSelect">
+        <option value="">-- Select Class --</option>
+      </select>
+      <div id="students-table">Please select a class.</div>
+    </div>
+
+    <!-- Challenges Page -->
+    <div id="challenges" class="card" style="display:none;">
+      <h2>Manage Coding Challenges</h2>
+      <form id="challengeForm">
+        <input type="text" id="title" placeholder="Challenge Title" required>
+        <input type="text" id="department" placeholder="Department" required>
+        <input type="url" id="link" placeholder="Google Form Link" required>
+        <input type="date" id="date" required>
+        <button type="submit">Add Challenge</button>
+      </form>
+      <div id="challenges-list" style="margin-top:20px;">Loading...</div>
+    </div>
+  </div>
+
+  <script>
+    // Access control
+    const role = localStorage.getItem("userRole");
+    const faculty = localStorage.getItem("userIdentifier");
+    if (!role || (role !== "faculty" && role !== "admin")) {
+      window.location.href = "index.html";
+    }
+
+    // Show name/email
+    document.getElementById("faculty-name").innerText = faculty;
+
+    // Navigation
+    const tabs = {
+      "tab-home": "home",
+      "tab-students": "students",
+      "tab-challenges": "challenges"
+    };
+
+    Object.keys(tabs).forEach(tabId => {
+      document.getElementById(tabId).addEventListener("click", () => {
+        Object.values(tabs).forEach(sec => document.getElementById(sec).style.display = "none");
+        Object.keys(tabs).forEach(t => document.getElementById(t).classList.remove("active"));
+        document.getElementById(tabs[tabId]).style.display = "block";
+        document.getElementById(tabId).classList.add("active");
+      });
+    });
+
+    // Logout
+    document.getElementById("logout").addEventListener("click", () => {
+      localStorage.clear();
+      window.location.href = "index.html";
+    });
+
+    // Load classes for dropdown
+    async function loadClasses() {
+      const res = await fetch("/classes");
+      const classes = await res.json();
+
+      const classSelect = document.getElementById("classSelect");
+      classes.forEach(cls => {
+        const option = document.createElement("option");
+        option.value = cls;
+        option.textContent = cls;
+        classSelect.appendChild(option);
+      });
+    }
+
+    // Load students of selected class
+    document.getElementById("classSelect").addEventListener("change", async (e) => {
+      const className = e.target.value;
+      if (!className) {
+        document.getElementById("students-table").innerText = "Please select a class.";
+        return;
+      }
+
+      const res = await fetch(`/students/class/${className}`);
+      const students = await res.json();
+
+      if (!students.length) {
+        document.getElementById("students-table").innerText = "No students found for this class.";
+        return;
+      }
+
+      const headers = students[0];
+      let html = "<table><tr>";
+      headers.forEach(h => html += `<th>${h}</th>`);
+      html += "</tr>";
+
+      students.slice(1).forEach(row => {
+        html += "<tr>";
+        row.forEach(cell => html += `<td>${cell}</td>`);
+        html += "</tr>";
+      });
+
+      html += "</table>";
+      document.getElementById("students-table").innerHTML = html;
+    });
+
+    // Load challenges
+    async function loadChallenges() {
+      const res = await fetch("/challenges");
+      const challenges = await res.json();
+
+      if (!challenges.length) {
+        document.getElementById("challenges-list").innerText = "No challenges found.";
+        return;
+      }
+
+      const headers = challenges[0];
+      let html = "<table><tr>";
+      headers.forEach(h => html += `<th>${h}</th>`);
+      html += "</tr>";
+
+      challenges.slice(1).forEach(row => {
+        html += "<tr>";
+        row.forEach(cell => {
+          if (cell && cell.startsWith("http")) {
+            html += `<td><a href="${cell}" target="_blank">Open</a></td>`;
+          } else {
+            html += `<td>${cell}</td>`;
+          }
+        });
+        html += "</tr>";
+      });
+
+      html += "</table>";
+      document.getElementById("challenges-list").innerHTML = html;
+    }
+
+    // Add challenge
+    document.getElementById("challengeForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const data = {
+        title: document.getElementById("title").value,
+        department: document.getElementById("department").value,
+        link: document.getElementById("link").value,
+        date: document.getElementById("date").value
+      };
+
+      const res = await fetch("/addChallenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data)
+      });
+
+      const result = await res.json();
+
+      if (res.ok && result.success) {
+        alert(result.message || "Challenge added!");
+        loadChallenges();
+      } else {
+        alert(result.error || "⚠️ Failed to add challenge. Check department name in Students sheet.");
+      }
+    });
+
+    // Initialize
+    loadClasses();
+    loadChallenges();
+  </script>
+</body>
+</html>
