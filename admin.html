@@ -75,7 +75,7 @@
   <script>
     // Fetch all students
     async function loadStudents() {
-      const res = await fetch("/students");
+      const res = await fetch("https://dailycodingchallenge.onrender.com/students");
       const students = await res.json();
 
       const list = document.getElementById("students-list");
@@ -132,3 +132,4 @@
   </script>
 </body>
 </html>
+
