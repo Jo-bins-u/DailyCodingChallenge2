@@ -242,4 +242,4 @@ app.get("/challenges/:department", async (req, res) => {
 
 // ========== SERVER START ==========
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(...));
+app.listen(PORT, () => console.log(`🚀 Server running at http://localhost:${PORT}`));
