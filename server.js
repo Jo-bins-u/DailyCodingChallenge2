@@ -9,7 +9,7 @@ app.use(express.static(path.join(__dirname, "public"))); // Serve HTML files
 
 // 🔹 Google Sheets Setup
 const auth = new google.auth.GoogleAuth({
-  keyFile: "credentials.json", // your service account credentials file
+  credentials: JSON.parse(process.env.GOOGLE_CREDENTIALS),
   scopes: ["https://www.googleapis.com/auth/spreadsheets"]
 });
 
